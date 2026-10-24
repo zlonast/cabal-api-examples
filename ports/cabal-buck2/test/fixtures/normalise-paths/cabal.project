@@ -1,0 +1,5 @@
+-- A package path with a `./` prefix, naming the .cabal file: how `cabal init`
+-- and many hand-written projects write it.
+packages: ./pkg/pkg.cabal
+
+active-repositories: :none

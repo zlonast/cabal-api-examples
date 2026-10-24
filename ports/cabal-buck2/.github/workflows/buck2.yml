@@ -1,0 +1,273 @@
+name: buck2
+
+# End-to-end tests: build cabal-buck2 with cabal, use it to generate a buck2
+# build of this very project (`cabal buck2`, with and without --source-deps),
+# then build and test the project with buck2; and the same with example/, a
+# small project with Template Haskell, hsc2hs, C++ and a Hackage dependency, in
+# each build mode of buck2 (dev, opt and prof). The buck2 side (buck2/) is the haskell-buck2 submodule, which has
+# to be at the commit for this release of cabal-buck2: cabal-buck2 checks that
+# buck2/version.bzl says the release it is.
+#
+# On Linux and macOS (Apple silicon); --source-deps only on Linux, since it
+# builds much more and doesn't test anything platform-specific that the store
+# mode doesn't.
+
+# See: https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions#concurrency.
+concurrency:
+  group: ${{ github.ref }}-${{ github.workflow }}
+  cancel-in-progress: true
+
+on:
+  - push
+  - pull_request
+  - workflow_dispatch
+
+env:
+  GHC_VERSION: 9.6.7
+  # A dated release of https://github.com/facebook/buck2/releases
+  # This is chosen to be compatible with the prelude in the buck2
+  # submodule; earlier or later versions are not guaranteed to work.
+  BUCK2_VERSION: "2026-10-01"
+
+jobs:
+  buck2:
+    name: cabal buck2${{ matrix.args }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The dependencies are built by cabal, into its store.
+          - mode: store
+            args: ""
+            os: ubuntu-latest
+          - mode: store
+            args: ""
+            os: macos-latest
+          # The dependencies are built from source by buck2 as well, so that
+          # the cabal store isn't used for them at all. This builds a lot
+          # more with buck2 (cabal-install and everything it depends on).
+          - mode: source-deps
+            args: " --source-deps"
+            os: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The buck2 prelude and support code (buck2/).
+          submodules: true
+
+      # The image's Command Line Tools are newer than its default Xcode
+      # (macos-26: CLT 27 with the macOS 27 SDK, Xcode 26.6), and GHC's links
+      # end up with the CLT's SDK, whose .tbd stubs Xcode's ld can't read
+      # ("unknown architecture arm64e.x1"); setting SDKROOT isn't enough. Use
+      # the CLT, linker and all. See
+      # https://github.com/actions/runner-images/issues/14940 - remove this
+      # once it's fixed.
+      - name: Use the Command Line Tools
+        if: runner.os == 'macOS'
+        run: sudo xcode-select -s /Library/Developer/CommandLineTools
+
+      - name: Install GHC and cabal
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: ${{ env.GHC_VERSION }}
+          cabal-version: latest
+
+      - name: Install buck2
+        run: |
+          case "$RUNNER_OS-$RUNNER_ARCH" in
+            Linux-X64) target=x86_64-unknown-linux-gnu ;;
+            macOS-ARM64) target=aarch64-apple-darwin ;;
+            *) echo "no buck2 release for $RUNNER_OS-$RUNNER_ARCH"; exit 1 ;;
+          esac
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-${target}.zst" \
+            | zstd -d > "$HOME/.local/bin/buck2"
+          chmod +x "$HOME/.local/bin/buck2"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Tool versions
+        run: |
+          ghc --version
+          cabal --version
+          buck2 --version
+          if [ "$RUNNER_OS" = macOS ]; then xcode-select -p; xcrun --show-sdk-path; ld -v; fi
+          # The buck2 toolchain looks the compiler up by versioned name.
+          ghc-${GHC_VERSION} --version
+          ghc-pkg-${GHC_VERSION} --version
+
+      - name: Update Hackage index
+        run: cabal v2-update
+
+      - name: Generate build plan for correct cache key
+        run: cabal build all --dry-run
+
+      - name: Get runner OS/version for cache keys
+        id: get-osver
+        run: echo "osver=$ImageOS" >> "$GITHUB_OUTPUT"
+
+      # Where cabal keeps its store depends on whether ~/.cabal exists (the
+      # setup action makes it), so ask it.
+      - name: Get the cabal store directory
+        id: store
+        run: echo "dir=$(cabal path --store-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore cached dependencies
+        uses: actions/cache/restore@v6
+        id: cache
+        with:
+          path: ${{ steps.store.outputs.dir }}
+          key: ${{ steps.get-osver.outputs.osver }}-store-buck2-${{ matrix.mode }}-${{ hashFiles('dist-newstyle/cache/plan.json') }}
+          restore-keys: ${{ steps.get-osver.outputs.osver }}-store-buck2-${{ matrix.mode }}-
+
+      - name: Build cabal-buck2
+        run: cabal build exe:cabal-buck2
+
+      # Dependencies are built by cabal as part of `cabal buck2` (as a plain
+      # `cabal build --only-dependencies` would); everything in this project
+      # is built by buck2. Run a copy of the binary so that the build
+      # directory it operates on isn't the one it lives in.
+      #
+      # This creates .buckconfig and PACKAGE (copied from buck2/template), as
+      # well as third-party/haskell and BUCK.cabal.bzl. BUCK is the one file
+      # of the setup that is committed: it is hand-maintained, see there.
+      - name: Generate buck2 build (cabal-buck2 --enable-tests${{ matrix.args }})
+        run: |
+          cp "$(cabal list-bin exe:cabal-buck2)" "$RUNNER_TEMP/cabal-buck2"
+          "$RUNNER_TEMP/cabal-buck2" --enable-tests${{ matrix.args }}
+
+      - name: Cache dependencies
+        uses: actions/cache/save@v6
+        if: always() && steps.cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.store.outputs.dir }}
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+
+      - name: buck2 build
+        run: buck2 build //...
+
+      # The test-suite runs the cabal-buck2 that buck2 just built (BUCK says
+      # where it is) on the projects in test/fixtures.
+      - name: buck2 test
+        run: buck2 test //...
+
+  example:
+    name: example (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      # The image's Command Line Tools are newer than its default Xcode
+      # (macos-26: CLT 27 with the macOS 27 SDK, Xcode 26.6), and GHC's links
+      # end up with the CLT's SDK, whose .tbd stubs Xcode's ld can't read
+      # ("unknown architecture arm64e.x1"); setting SDKROOT isn't enough. Use
+      # the CLT, linker and all. See
+      # https://github.com/actions/runner-images/issues/14940 - remove this
+      # once it's fixed.
+      - name: Use the Command Line Tools
+        if: runner.os == 'macOS'
+        run: sudo xcode-select -s /Library/Developer/CommandLineTools
+
+      - name: Install GHC and cabal
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: ${{ env.GHC_VERSION }}
+          cabal-version: latest
+
+      - name: Install buck2
+        run: |
+          case "$RUNNER_OS-$RUNNER_ARCH" in
+            Linux-X64) target=x86_64-unknown-linux-gnu ;;
+            macOS-ARM64) target=aarch64-apple-darwin ;;
+            *) echo "no buck2 release for $RUNNER_OS-$RUNNER_ARCH"; exit 1 ;;
+          esac
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-${target}.zst" \
+            | zstd -d > "$HOME/.local/bin/buck2"
+          chmod +x "$HOME/.local/bin/buck2"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Tool versions
+        run: |
+          ghc --version
+          cabal --version
+          buck2 --version
+          if [ "$RUNNER_OS" = macOS ]; then xcode-select -p; xcrun --show-sdk-path; ld -v; fi
+          ghc-${GHC_VERSION} --version
+          ghc-pkg-${GHC_VERSION} --version
+
+      - name: Update Hackage index
+        run: cabal v2-update
+
+      - name: Generate build plan for correct cache key
+        run: cabal build all --dry-run
+
+      - name: Get runner OS/version for cache keys
+        id: get-osver
+        run: echo "osver=$ImageOS" >> "$GITHUB_OUTPUT"
+
+      # Where cabal keeps its store depends on whether ~/.cabal exists (the
+      # setup action makes it), so ask it.
+      - name: Get the cabal store directory
+        id: store
+        run: echo "dir=$(cabal path --store-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore cached dependencies
+        uses: actions/cache/restore@v6
+        id: cache
+        with:
+          path: ${{ steps.store.outputs.dir }}
+          key: ${{ steps.get-osver.outputs.osver }}-store-example-${{ hashFiles('dist-newstyle/cache/plan.json', 'example/example.cabal') }}
+          restore-keys: ${{ steps.get-osver.outputs.osver }}-store-example-
+
+      - name: Build cabal-buck2
+        run: cabal build exe:cabal-buck2
+
+      # setup.sh makes buck2/ in example/ the one of this repository, and
+      # generates the buck2 build, with the dependencies built with profiling
+      # too (for the prof mode).
+      #
+      # list-bin has to be run in the root of the repository: example/ is a
+      # different project.
+      - name: Generate buck2 build of example/
+        run: |
+          cp "$(cabal list-bin exe:cabal-buck2)" "$RUNNER_TEMP/cabal-buck2"
+          cd example
+          CABAL_BUCK2="$RUNNER_TEMP/cabal-buck2" ./setup.sh
+
+      - name: Cache dependencies
+        uses: actions/cache/save@v6
+        if: always() && steps.cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.store.outputs.dir }}
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+
+      - name: buck2 build and test (dev)
+        working-directory: example
+        run: |
+          buck2 build //...
+          buck2 test //...
+
+      - name: buck2 build and test (opt)
+        working-directory: example
+        run: |
+          buck2 build -m opt //...
+          buck2 test -m opt //...
+
+      - name: buck2 build and test (prof)
+        working-directory: example
+        run: |
+          buck2 build -m prof //...
+          buck2 test -m prof //...

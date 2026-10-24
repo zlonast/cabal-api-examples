@@ -1,0 +1,66 @@
+module Hix.Managed.Handlers.Maint.Test where
+
+import Hix.Data.EnvName (EnvName)
+import Hix.Data.Monad (M)
+import qualified Hix.Data.Options
+import Hix.Data.Options (ManagedOptions)
+import Hix.Data.VersionBounds (Bound (..))
+import Hix.Http (httpManager)
+import Hix.Managed.Cabal.Data.Config (CabalConfig, HackagePurpose (ForPublish))
+import Hix.Managed.Data.BuildConfig (SpecialBuildHandlers (BuildHandlersTestMaint))
+import Hix.Managed.Data.BuildOutput (DepChanges)
+import Hix.Managed.Data.GitConfig (GitConfig)
+import Hix.Managed.Data.MaintConfig (MaintConfig (..))
+import Hix.Managed.Data.ProjectContext (ProjectContext (..))
+import Hix.Managed.Git (gitApiFromConfigM)
+import Hix.Managed.Handlers.Build (BuildHandlers)
+import qualified Hix.Managed.Handlers.Build.Test as Build
+import qualified Hix.Managed.Handlers.Context as ContextHandlers
+import Hix.Managed.Handlers.Context (ContextHandlers (..), ContextKey (ContextManaged), ContextQuery (ContextQuery))
+import qualified Hix.Managed.Handlers.HackageClient.Prod as HackageClient
+import Hix.Managed.Handlers.Maint (MaintHandlers (..))
+import Hix.Managed.Handlers.Maint.Prod (projectWithEnv, runBump)
+import qualified Hix.Managed.Handlers.Project.Prod as Project
+import Hix.Managed.Maint.Git (gitMaintNative)
+import qualified Hix.Managed.ProjectContextProto as ProjectContextProto
+
+bumpHandlers ::
+  ContextHandlers ->
+  ManagedOptions ->
+  EnvName ->
+  M (BuildHandlers, ProjectContext)
+bumpHandlers ContextHandlers {query} options envName = do
+  proto <- query (ContextQuery ContextManaged)
+  project <- ProjectContextProto.validate BoundUpper options.project proto
+  handlersProject <- Project.handlersProd options.stateFile
+  handlers <-
+    Build.chooseHandlers (Just BuildHandlersTestMaint) handlersProject options.project.build project.cabal
+  bumpProject <- projectWithEnv envName project
+  pure (handlers, bumpProject)
+
+runBumpTest ::
+  ContextHandlers ->
+  ManagedOptions ->
+  EnvName ->
+  M DepChanges
+runBumpTest config options envName = do
+  (handlers, project) <- bumpHandlers config options envName
+  runBump handlers project
+
+handlersTest ::
+  ManagedOptions ->
+  MaintConfig ->
+  CabalConfig ->
+  Maybe GitConfig ->
+  M MaintHandlers
+handlersTest options config cabal git = do
+  manager <- httpManager
+  publishHackages <- HackageClient.handlersProdFor (Just manager) ForPublish cabal
+  pure MaintHandlers {
+    git = gitApiFromConfigM git (gitMaintNative config),
+    context,
+    runBump = runBumpTest context options,
+    publishHackages
+  }
+  where
+    context = ContextHandlers.handlersProd

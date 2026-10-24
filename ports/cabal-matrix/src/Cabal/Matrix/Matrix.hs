@@ -1,0 +1,199 @@
+module Cabal.Matrix.Matrix where
+
+import Cabal.Matrix.CabalArgs
+import Cabal.Matrix.Rectangle (Rectangle)
+import Cabal.Matrix.Rectangle qualified as Rectangle
+import Data.Set qualified as Set
+import Data.Text (Text)
+import Data.Text qualified as Text
+import Data.Traversable
+import Distribution.Client.API.Config (loadGlobalConfig)
+import Distribution.Client.API.PackageIndex (PackageIndex, lookupPackageName, withPackageIndex)
+import Distribution.Package
+import Distribution.Pretty
+import Distribution.Verbosity qualified as Verbosity
+import Distribution.Version
+
+
+-- | A build matrix is represented by a rectangle, where properties that we
+-- iterate over correspond to columns (first 'Text'), and desired combinations
+-- of values of those properties (second 'Text') correspond to rows. Each row is
+-- then marked with the collection of options that this combination of choices
+-- produces (the 'Flavor').
+type Matrix = Rectangle Flavor Text (Maybe Text)
+
+timesMatrix :: Matrix -> Matrix -> Matrix
+timesMatrix = Rectangle.productRows (<>)
+
+addMatrix :: Matrix -> Matrix -> Matrix
+addMatrix = Rectangle.appendRowsUnioningColumns Nothing
+
+subtractMatrix :: Matrix -> Matrix -> Matrix
+subtractMatrix = Rectangle.subtractRowsBySubsetColumns
+
+seqMatrix :: Matrix -> Matrix -> Matrix
+seqMatrix m1 m2 = Rectangle.blockDiagonal m1 Nothing Nothing m2
+
+unitMatrix :: Matrix
+unitMatrix = Rectangle.unitRow mempty
+
+newtype Compiler = Compiler FilePath
+  deriving newtype (Show)
+
+compilersMatrix :: [Compiler] -> Matrix
+compilersMatrix compilers = Rectangle.vertical "COMPILER"
+  [ ( mempty
+      { unorderedOptions = Set.singleton ("--with-compiler=" <> compiler)
+      }
+    , Just compiler
+    )
+  | Compiler (Text.pack -> compiler) <- compilers
+  ]
+
+data Prefer = PreferOldest | PreferNewest
+  deriving stock (Eq, Show)
+
+preferMatrix :: [Prefer] -> Matrix
+preferMatrix values = Rectangle.vertical "PREFER"
+  [ ( mempty
+      { unorderedOptions = if value == PreferOldest
+        then Set.singleton "--prefer-oldest"
+        else Set.empty
+      }
+    , Just case value of
+      PreferOldest -> "oldest"
+      PreferNewest -> "newest"
+    )
+  | value <- values
+  ]
+
+packageVersionMatrix :: PackageName -> [Version] -> Matrix
+packageVersionMatrix package versions
+  = Rectangle.vertical (Text.pack $ unPackageName package)
+    [ ( mempty
+        { constraints = Conjunction $ Set.singleton
+          $ Disjunction $ Set.singleton $ Conjunction $ Set.singleton
+          $ Constraint
+            { package
+            , versions = thisVersion version
+            }
+        }
+      , Just $ Text.pack $ prettyShow version
+      )
+    | version <- versions
+    ]
+
+customUnorderedOptions :: Text -> [Text] -> Matrix
+customUnorderedOptions name options = Rectangle.vertical name
+  [ ( mempty
+      { unorderedOptions = Set.fromList options
+      }
+    , Just $ Text.unwords options
+    )
+  ]
+
+customOrderedOptions :: Text -> [Text] -> Matrix
+customOrderedOptions name options = Rectangle.vertical name
+  [ ( mempty
+      { orderedOptions = options
+      }
+    , Just $ Text.unwords options
+    )
+  ]
+
+constraintsMatrix :: Disjunction (Conjunction Constraint) -> Matrix
+constraintsMatrix disj = Rectangle.unitRow $ mempty
+  { constraints = Conjunction $ Set.singleton disj
+  }
+
+data VersionExpr
+  = AllVersions
+  | SomeVersions [Either Version VersionRange]
+
+-- | An unevaluated build matrix expression. Matrices can contain exponentially
+-- many rows in the worst case, so it makes sense to delay converting into an
+-- evaluated representation.
+data MatrixExpr
+  = TimesExpr MatrixExpr MatrixExpr
+  | AddExpr MatrixExpr MatrixExpr
+  | SubtractExpr MatrixExpr MatrixExpr
+  | SeqExpr MatrixExpr MatrixExpr
+  | UnitExpr
+  | CompilersExpr [Compiler]
+  | PreferExpr [Prefer]
+  | PackageVersionExpr PackageName VersionExpr
+  | CustomUnorderedExpr Text [Text]
+  | CustomOrderedExpr Text [Text]
+  | ConstraintsExpr (Disjunction (Conjunction Constraint))
+
+-- | Evaluating the build matrix expression may require access to the source
+-- package DB, but if it doesn't, we'd like to avoid loading it.
+data EvalM a = EvalPure a | EvalWithDB (PackageIndex -> a)
+  deriving stock (Functor)
+
+instance Applicative EvalM where
+  pure = EvalPure
+  EvalPure f <*> EvalPure x = EvalPure (f x)
+  EvalPure f <*> EvalWithDB x = EvalWithDB \db -> f (x db)
+  EvalWithDB f <*> EvalPure x = EvalWithDB \db -> f db x
+  EvalWithDB f <*> EvalWithDB x = EvalWithDB \db -> f db (x db)
+
+runEvalM :: EvalM a -> IO a
+runEvalM = \case
+  EvalPure x -> pure $! x
+  EvalWithDB f -> withDB \db -> pure $! f db
+  where
+    withDB :: (PackageIndex -> IO a) -> IO a
+    withDB k = do
+      config <- loadGlobalConfig verbosity Nothing
+      withPackageIndex verbosity config k
+    verbosity = Verbosity.mkVerbosity Verbosity.defaultVerbosityHandles Verbosity.silent
+
+evalVersionRanges
+  :: PackageName -> VersionExpr -> EvalM [Version]
+evalVersionRanges package = \case
+  AllVersions -> EvalWithDB \db ->
+    packageVersion <$> lookupPackageName db package
+  SomeVersions versions -> concat <$> for versions \case
+    Left version -> pure [version]
+    Right range -> EvalWithDB \db ->
+      packageVersion
+        <$> filter (\p -> packageVersion p `withinRange` range) (lookupPackageName db package)
+
+evalMatrixExpr :: MatrixExpr -> IO Matrix
+evalMatrixExpr = runEvalM . go
+  where
+    go = \case
+      TimesExpr m1 m2 -> timesMatrix <$> go m1 <*> go m2
+      AddExpr m1 m2 -> addMatrix <$> go m1 <*> go m2
+      SubtractExpr m1 m2 -> subtractMatrix <$> go m1 <*> go m2
+      SeqExpr m1 m2 -> seqMatrix <$> go m1 <*> go m2
+      UnitExpr -> EvalPure unitMatrix
+      CompilersExpr compilers -> EvalPure $ compilersMatrix compilers
+      PreferExpr values -> EvalPure $ preferMatrix values
+      PackageVersionExpr package versions
+        -> packageVersionMatrix package <$> evalVersionRanges package versions
+      CustomUnorderedExpr name values
+        -> EvalPure $ customUnorderedOptions name values
+      CustomOrderedExpr name values
+        -> EvalPure $ customOrderedOptions name values
+      ConstraintsExpr disjs
+        -> EvalPure $ constraintsMatrix disjs
+
+resolveMatrixExpr :: MatrixExpr -> IO MatrixExpr
+resolveMatrixExpr = runEvalM . go
+  where
+    go = \case
+      TimesExpr m1 m2 -> TimesExpr <$> go m1 <*> go m2
+      AddExpr m1 m2 -> AddExpr <$> go m1 <*> go m2
+      SubtractExpr m1 m2 -> SubtractExpr <$> go m1 <*> go m2
+      SeqExpr m1 m2 -> SeqExpr <$> go m1 <*> go m2
+      e@UnitExpr -> pure e
+      e@(CompilersExpr _) -> pure e
+      e@(PreferExpr _) -> pure e
+      PackageVersionExpr package versions
+        -> PackageVersionExpr package . SomeVersions . map Left
+          <$> evalVersionRanges package versions
+      e@(CustomUnorderedExpr _ _) -> pure e
+      e@(CustomOrderedExpr _ _) -> pure e
+      e@(ConstraintsExpr _) -> pure e

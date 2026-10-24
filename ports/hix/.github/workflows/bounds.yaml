@@ -1,0 +1,51 @@
+name: Maintain bounds
+
+on:
+  workflow_call:
+    inputs:
+      command:
+        required: true
+        type: string
+      timeout:
+        required: false
+        type: number
+        default: 3600
+      options:
+        required: false
+        type: string
+        default: ''
+      cachix:
+        required: false
+        type: string
+        default: hix-build
+    secrets:
+      cachix_key:
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  lower:
+    name: Check and update ${{ startsWith(inputs.command, 'lower') && 'lower' || 'upper' }} bounds
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - uses: cachix/install-nix-action@v31
+      with:
+        github_access_token: ${{ secrets.GITHUB_TOKEN }}
+        extra_nix_config: download-buffer-size = 1000000000
+    - uses: cachix/cachix-action@v17
+      with:
+        name: ${{ inputs.cachix }}
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+    - run: rm -rf /opt/hostedtoolcache
+    - id: bounds
+      name: Check and update bounds
+      run: nix run .#${{ inputs.command }} -- --output=ga-pr --build-timeout=${{ inputs.timeout }} ${{ inputs.options }}
+    - name: Create pull request
+      if: steps.bounds.outputs.commit-message
+      uses: peter-evans/create-pull-request@v8
+      with: ${{ steps.bounds.outputs }}

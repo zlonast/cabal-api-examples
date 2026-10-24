@@ -1,0 +1,277 @@
+-- | Execute multiple build steps on multiple 'Flavor's of a build, with live
+-- progress and output updates.
+--
+-- The scheduler maintains a job queue of flavors (not steps), so that when it
+-- starts work on a flavor, it goes through all of its steps. The scheduler can
+-- be told to reprioritize a flavor that hasn't been started yet.
+--
+-- The scheduler is given an 'Array' of 'Flavor's, and subsequent communication
+-- refers to flavors from this array by their index.
+module Cabal.Matrix.Scheduler
+  ( SchedulerConfig(..)
+  , mkCabalArgs
+  , FlavorIndex
+  , startScheduler
+  , SchedulerMessage(..)
+  , SchedulerHandle
+  , signalScheduler
+  , SchedulerSignal(..)
+  ) where
+
+import Cabal.Matrix.CabalArgs
+import Cabal.Matrix.ProcessRunner
+import Control.Concurrent
+import Control.Monad
+import Data.ByteString (ByteString)
+import Data.List
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
+import Data.Primitive
+import Data.Set (Set)
+import Data.Set qualified as Set
+import Data.Text (Text)
+import System.Exit
+
+
+data SchedulerConfig = SchedulerConfig
+  { jobs :: Int
+    -- ^ Number of flavors that could be building in parallel at a time.
+  , options :: [Text]
+    -- ^ Options to use in all builds.
+  , targets :: [Text]
+  , cabalExecutable :: FilePath
+  , mode :: CabalMode
+  , userProjectFiles :: UserProjectFiles
+  , steps :: PerCabalStep Bool
+    -- ^ Which build steps to run or skip.
+  }
+
+-- | Index into 'flavors' of 'SchedulerInput'
+type FlavorIndex = Int
+
+data SchedulerMessage
+  = OnStepStarted
+    { flavorIndex :: FlavorIndex
+    , step :: CabalStep
+    } -- ^ Either the first message for this flavor, or sequenced after
+      -- 'OnStepFinished' for this flavor.
+  | OnStepFinished
+    { flavorIndex :: FlavorIndex
+    , step :: CabalStep
+    , exitCode :: ExitCode
+    } -- ^ Always sequenced after 'OnOutput' for this flavor.
+  | OnOutput
+    { flavorIndex :: FlavorIndex
+    , step :: CabalStep
+    , channel :: OutputChannel
+    , output :: ByteString
+    } -- ^ Sequenced after 'OnStepStarted' for this flavor.
+  | OnDone -- ^ Sequenced after all events.
+  deriving stock (Show)
+
+data SchedulerSignal
+  = InterruptFlavor
+    { flavorIndex :: FlavorIndex
+    } -- ^ Try to interrupt the current step (if any) with SIGINT and don't
+      -- start subsequent steps (if any).
+  | TerminateFlavor
+    { flavorIndex :: FlavorIndex
+    } -- ^ Try to interrupt the current step (if any) with SIGTERM and don't
+      -- start subsequent steps (if any).
+  | PrioritizeFlavor
+    { flavorIndex :: FlavorIndex
+    } -- ^ Move the given flavor the front of the priority queue, if it hasn't
+      -- been started yet
+  | RestartFlavor
+    { flavorIndex :: FlavorIndex
+    }
+
+data SchedulerHandle = SchedulerHandle
+  { state :: MVar SchedulerState
+  , queueFilled :: MVar ()
+  }
+
+data SchedulerState = SchedulerState
+  { processes :: Map FlavorIndex ProcessHandle
+  , stopRequested :: Set FlavorIndex
+  , queue :: [FlavorIndex]
+    -- ^ INVARIANT: disjoint from 'stopRequested' and from keys of 'processes'
+  }
+
+mkCabalArgs :: SchedulerConfig -> CabalStep -> Flavor -> CabalArgs
+mkCabalArgs input step flavor = CabalArgs
+  { cabalExecutable = input.cabalExecutable
+  , step
+  , mode = input.mode
+  , userProjectFiles = input.userProjectFiles
+  , options = input.options
+  , targets = input.targets
+  , flavor
+  }
+
+startScheduler
+  :: SchedulerConfig
+  -> Array Flavor
+  -> (SchedulerMessage -> IO ())
+  -> IO SchedulerHandle
+startScheduler input flavors cb = do
+  sem <- newQSem input.jobs
+  stateVar <- newMVar SchedulerState
+    { processes = Map.empty
+    , stopRequested = Set.empty
+    , queue = [0 .. sizeofArray flavors - 1]
+    }
+  queueVar <- newEmptyMVar
+  let
+    waitForNext :: IO ()
+    waitForNext = do
+      waitQSem sem
+      (done, signal) <- modifyMVar stateVar \state -> case state.queue of
+        [] -> do
+          doneWithFlavor
+          pure (state, (True, pure ()))
+        flavorIndex:queue' -> do
+          result <- startSteps flavorIndex
+            (filter (indexCabalStep input.steps) [minBound..maxBound])
+          pure
+            ( state
+              { processes
+                = Map.alter (\_ -> fst <$> result) flavorIndex state.processes
+              , queue = queue'
+              }
+            , (False, maybe (pure ()) snd result)
+            )
+
+      signal -- possibly send the 'OnStepStarted' event
+
+      if done
+      then waitForDone
+      else waitForNext
+
+    doneWithFlavor :: IO ()
+    doneWithFlavor = signalQSem sem
+
+    startSteps
+      :: FlavorIndex -> [CabalStep] -> IO (Maybe (ProcessHandle, IO ()))
+    startSteps flavorIndex = \case
+      [] -> Nothing <$ doneWithFlavor
+      step:nextSteps -> Just <$> do
+        stdoutClosed <- newEmptyMVar
+        stderrClosed <- newEmptyMVar
+        processStarted <- newEmptyMVar
+        let args = mkCabalArgs input step (indexArray flavors flavorIndex)
+        prepareFilesForCabal args
+        handle <- startProcess (renderCabalArgs args)
+          (reactStep flavorIndex step nextSteps stdoutClosed stderrClosed processStarted)
+        -- We cannot send 'OnStepStarted' here because we are holding the state
+        -- MVar, and a deadlock is possible. Instead we defer sending it until
+        -- the MVar is released, and synchronize 'OnOutput' with this event.
+        pure $ (handle,) do
+          cb OnStepStarted { flavorIndex, step }
+          putMVar processStarted ()
+
+    reactStep
+      :: FlavorIndex
+      -> CabalStep
+      -> [CabalStep]
+      -> MVar ()
+      -> MVar ()
+      -> MVar ()
+      -> ProcessMessage
+      -> IO ()
+    reactStep flavorIndex step nextSteps stdoutClosed stderrClosed
+      processStarted = \case
+        OnProcessOutput channel output -> do
+          -- Synchronize OnOutput to be sent after OnStepStarted
+          readMVar processStarted
+          cb OnOutput
+            { flavorIndex
+            , step
+            , channel
+            , output
+            }
+        OnChannelClosed Stdout -> putMVar stdoutClosed ()
+        OnChannelClosed Stderr -> putMVar stderrClosed ()
+        OnProcessExit exitCode -> do
+          -- Synchronize OnStepFinished to be sequenced after OnOutput.
+          -- Perhaps ProcessRunner should do this.
+          takeMVar stdoutClosed
+          takeMVar stderrClosed
+          cb OnStepFinished { flavorIndex, step, exitCode }
+          signal <- modifyMVar stateVar \state -> case exitCode of
+            ExitSuccess
+              -- It's possible that an interrupt signal has been received after
+              -- the process has already exited (successfully), but before we got
+              -- the 'OnProcessExit' message. So we must check this flag to see if
+              -- we shouldn't start subsequent steps.
+              | flavorIndex `Set.notMember` state.stopRequested
+              -> do
+                result <- startSteps flavorIndex nextSteps
+                pure
+                  ( state
+                    { processes = Map.alter
+                      (\_ -> fst <$> result) flavorIndex state.processes
+                    }
+                  , maybe (pure ()) snd result
+                  )
+            _ -> do
+              doneWithFlavor
+              pure
+                ( state
+                  { processes = Map.delete flavorIndex state.processes
+                  , stopRequested = Set.delete flavorIndex state.stopRequested
+                  }
+                , pure ()
+                )
+          signal -- possibly send the 'OnStepStarted' event
+
+    waitForDone :: IO ()
+    waitForDone = do
+      -- Once the queue has become empty, wait for all running jobs to finish
+      replicateM_ input.jobs $ waitQSem sem
+      cb OnDone
+      -- Restart the process if someone touches the queueVar
+      takeMVar queueVar
+      replicateM_ input.jobs $ signalQSem sem
+      waitForNext
+
+  _ <- forkIO waitForNext
+  pure $ SchedulerHandle
+    { state = stateVar
+    , queueFilled = queueVar
+    }
+
+signalScheduler :: SchedulerHandle -> SchedulerSignal -> IO ()
+signalScheduler hdl = \case
+  InterruptFlavor{ flavorIndex } -> modifyMVar_ hdl.state \state -> if
+    | flavorIndex `elem` state.queue
+    -> pure state { queue = delete flavorIndex state.queue }
+    | Just processHdl <- Map.lookup flavorIndex state.processes
+    -> do
+      signalProcess processHdl SignalInterrupt
+      pure state { stopRequested = Set.insert flavorIndex state.stopRequested }
+    | otherwise
+    -> pure state
+  TerminateFlavor{ flavorIndex } -> modifyMVar_ hdl.state \state -> if
+    | flavorIndex `elem` state.queue
+    -> pure state { queue = delete flavorIndex state.queue }
+    | Just processHdl <- Map.lookup flavorIndex state.processes
+    -> do
+      signalProcess processHdl SignalTerminate
+      pure state { stopRequested = Set.insert flavorIndex state.stopRequested }
+    | otherwise
+    -> pure state
+  PrioritizeFlavor{ flavorIndex } -> modifyMVar_ hdl.state \state -> if
+    | flavorIndex `elem` state.queue
+    -> pure state { queue = flavorIndex : delete flavorIndex state.queue }
+      -- ^ TODO: leak? we accumulate 'delete' thunks?
+    | otherwise
+    -> pure state
+  RestartFlavor{ flavorIndex } -> do
+    modifyMVar_ hdl.state \state -> if
+      | flavorIndex `notElem` state.queue
+      , flavorIndex `Map.notMember` state.processes
+      -> pure state { queue = flavorIndex : state.queue }
+      | otherwise
+      -> pure state
+    void $ tryPutMVar hdl.queueFilled ()

@@ -1,0 +1,6 @@
+prefix=/opt/foo
+Name: foo
+Description: A library that isn't there: only what pkg-config says about it matters
+Version: 1.2.3
+Cflags: -I/opt/foo/include -DFOO_ENABLED
+Libs: -L/opt/foo/lib -lfoo -Wl,-rpath,/opt/foo/lib

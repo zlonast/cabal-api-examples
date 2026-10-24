@@ -1,0 +1,19 @@
+packages: .
+
+-- The API branch checkout, as a sibling directory:
+--   git clone --branch zlonast/cabal-install-api https://github.com/haskell/cabal cabal
+packages: ../cabal/Cabal
+packages: ../cabal/Cabal-syntax
+packages: ../cabal/cabal-install-solver
+packages: ../cabal/hooks-exe
+packages: ../cabal/cabal-install-internal
+packages: ../cabal/cabal-install
+
+-- The real reverse dependencies, vendored with their migration patches applied
+-- (see README): hackage-revdeps, cabal-matrix, cabal-add, cabal-hoogle.
+packages: ports/hackage-revdeps
+packages: ports/cabal-matrix
+packages: ports/cabal-add
+packages: ports/cabal-hoogle
+packages: ports/hix/packages/hix
+packages: ports/cabal-buck2

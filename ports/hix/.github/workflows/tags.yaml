@@ -1,0 +1,38 @@
+name: Tag release
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  release:
+    name: Tag release
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+          extra_nix_config: download-buffer-size = 1000000000
+      - uses: cachix/cachix-action@v17
+        with:
+          name: hix-build
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+      - run: rm -rf /opt/hostedtoolcache
+      - name: build static
+        run: nix build .#min.appimage
+      - uses: softprops/action-gh-release@v3
+        name: Create release
+        with:
+          prerelease: false
+          make_latest: true
+          files: |
+            result/bin/hix
+      - uses: DeterminateSystems/flakehub-push@main
+        name: 'Publish to flakehub'
+        with:
+          visibility: public

@@ -1,0 +1,13 @@
+cabal-version:      2.4
+name:               pkg
+version:            0.1.0.0
+build-type:         Simple
+-- File patterns with a `./` prefix, as Cabal allows.
+data-files:         ./data/x.txt
+extra-source-files: ./README
+
+library
+  exposed-modules:   Pkg
+  hs-source-dirs:    src
+  build-depends:     base
+  default-language:  Haskell2010

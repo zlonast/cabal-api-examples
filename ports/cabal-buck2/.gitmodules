@@ -1,0 +1,6 @@
+[submodule "buck2"]
+	path = buck2
+	url = https://github.com/simonmar/haskell-buck2.git
+	# The branch for this release of cabal-buck2: `git submodule update
+	# --remote` follows it.
+	branch = 0.3.0.0

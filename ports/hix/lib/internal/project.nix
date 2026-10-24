@@ -1,0 +1,76 @@
+{util}: let
+
+  inherit (util) config lib internal project;
+
+  noDirs = ''
+  The project does not configure any packages. Try adding this to 'flake.nix':
+
+    packages.app.src = ./.;
+
+  Or specify the project root to let Hix define a default package:
+
+    base = ./.;
+
+  Or use 'self' instead of 'base':
+
+    outputs = {self, hix}: hix {
+      inherit self;
+    };
+
+  Due to the hermeticity of Nix flakes, the directory cannot be inferred.
+  '';
+
+  defaultPackages =
+    {
+      app = {
+        src =
+          if project.specifiedBase == null
+          then throw noDirs
+          else project.specifiedBase;
+        executable.source-dirs = ".";
+      };
+    };
+
+  ambiguousMain = ''
+  Could not determine the main package.
+  This should only happen if all packages depend on each other cyclically.
+  If that is not the case, please report a bug at: https://github.com/tek/hix/issues
+  You can specify the main package explicitly:
+  {
+    main = "app";
+  }
+  '';
+
+  packageNames = lib.attrNames config.packages;
+
+  defaultMain = let
+      count = lib.length packageNames;
+    in
+      if count == 1
+      then lib.head packageNames
+      else if count == 0
+      then ''
+      This action requires at least one package to be defined, as in:
+      {
+        packages.app = { src = ./.; };
+      }
+      ''
+      else let
+        autoMain = internal.packages.selectMain (lib.attrNames config.packages);
+      in util.expectJust ambiguousMain autoMain;
+
+  packagePaths = util.mapValues (p: p.src) config.packages;
+
+  singlePackage = lib.length (lib.attrNames config.packages) == 1;
+
+in {
+
+  inherit
+  defaultPackages
+  packageNames
+  defaultMain
+  packagePaths
+  singlePackage
+  ;
+
+}

@@ -1,0 +1,19 @@
+name: root
+version: 1
+
+library:
+  source-dirs: src
+  dependencies:
+    - base >= 4 && < 6
+    - sub
+    - dep2
+    - dep1
+    - stm-chans
+
+executables:
+  run:
+    main: Main.hs
+    source-dirs: app
+    dependencies:
+      - base >= 4 && < 6
+      - root

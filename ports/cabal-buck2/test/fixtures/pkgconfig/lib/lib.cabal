@@ -1,0 +1,12 @@
+cabal-version:     3.0
+name:              lib
+version:           0.1
+build-type:        Simple
+
+-- No C sources, so only what Cabal made of these is in the spec.
+library
+  exposed-modules:   L
+  build-depends:     base
+  pkgconfig-depends: foo
+  extra-lib-dirs:    plain
+  default-language:  Haskell2010

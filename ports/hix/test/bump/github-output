@@ -1,0 +1,21 @@
+body<<EOF
+New versions:
+
+* aeson-2.2.3.0 [old range matches]
+* extra-1.7.14 [<1.8]
+* path-0.9.5 [<0.10]
+EOF
+branch=hix-managed/bump-0
+commit-message<<EOF
+Bump aeson, extra, path
+
+New versions:
+
+* aeson-2.2.3.0 [old range matches]
+* extra-1.7.14 [<1.8]
+* path-0.9.5 [<0.10]
+EOF
+committer=hix <noreply@github.com>
+delete-branch=true
+signoff=false
+title=Bump aeson, extra, path

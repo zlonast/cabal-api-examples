@@ -1,0 +1,65 @@
+module Hix.Test.ManagedTest where
+
+import Test.Tasty (TestTree, testGroup)
+
+import Hix.Test.Managed.AnalysisTest (test_analysis)
+import Hix.Test.Managed.BuildOutputTest (test_buildOutput)
+import Hix.Test.Managed.Bump.CandidatesTest (test_candidatesBump)
+import Hix.Test.Managed.Bump.MutationTest (test_bumpMutation)
+import Hix.Test.Managed.DiffTest (test_diff)
+import Hix.Test.Managed.HackageTest (test_hackageData)
+import Hix.Test.Managed.LowerAuto.MutationOptimizeTest (test_lowerAutoMutationOptimize)
+import Hix.Test.Managed.LowerAuto.MutationStabilizeTest (test_lowerAutoMutationStabilize)
+import Hix.Test.Managed.LowerInit.MutationTest (test_lowerInitMutation)
+import Hix.Test.Managed.LowerNativeTest ()
+import Hix.Test.Managed.LowerOptimize.CandidatesTest (test_candidatesOptimize)
+import Hix.Test.Managed.LowerOptimize.MutationTest (test_lowerOptimizeMutation)
+import Hix.Test.Managed.LowerOptimize.OrderTest (test_mutationOrder)
+import Hix.Test.Managed.LowerStabilize.MutationTest (test_lowerStabilizeMutation)
+import Hix.Test.Managed.ProjectContextProtoTest (test_parseProjectContextProto)
+import Hix.Test.Managed.Release.ValidationTest (test_validation)
+import Hix.Test.Managed.ReleaseMaintenanceTest (test_maint)
+import Hix.Test.Managed.ReleaseInputTest (test_releaseInput, test_releaseExplicitVersion)
+import Hix.Test.Managed.ReleaseTest (test_checkVersionPersistence, test_release, test_releaseReport, test_versionValidation)
+import Hix.Test.Managed.TagTest (test_tag)
+import Hix.Test.Managed.TargetSpecTest (test_targetSpec)
+import Hix.Test.Utils (unitTest)
+import Hix.Test.Managed.ReleaseUiTest (test_nav)
+import Hix.Test.Managed.GitConfigTest (test_gitConfig)
+
+test_managed :: TestTree
+test_managed =
+    testGroup "managed" [
+      testGroup "candidates" [
+        unitTest "bump" test_candidatesBump,
+        unitTest "optimize" test_candidatesOptimize
+      ],
+      testGroup "mutation build" [
+        test_bumpMutation,
+        unitTest "lower.init" test_lowerInitMutation,
+        unitTest "lower.optimize" test_lowerOptimizeMutation,
+        unitTest "lower.stabilize" test_lowerStabilizeMutation,
+        unitTest "lower.auto stabilize" test_lowerAutoMutationStabilize,
+        test_lowerAutoMutationOptimize,
+        unitTest "mutation ordering" test_mutationOrder
+      ],
+      unitTest "parse ProjectContext" test_parseProjectContextProto,
+      test_buildOutput,
+      test_diff,
+      test_maint,
+      test_tag,
+      test_hackageData,
+      test_analysis,
+      testGroup "release" [
+        test_validation,
+        test_release,
+        test_releaseReport,
+        test_versionValidation,
+        test_checkVersionPersistence,
+        unitTest "UI navigation" test_nav,
+        test_releaseInput,
+        test_releaseExplicitVersion
+      ],
+      test_targetSpec,
+      test_gitConfig
+    ]

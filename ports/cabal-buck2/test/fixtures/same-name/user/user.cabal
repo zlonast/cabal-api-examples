@@ -1,0 +1,13 @@
+cabal-version:      2.4
+name:               user
+version:            0.1.0.0
+build-type:         Simple
+
+-- Needs the other package's executable on PATH when it builds, under the
+-- name Cabal knows it by.
+library
+  exposed-modules:   User
+  hs-source-dirs:    src
+  build-depends:     base, tool
+  build-tool-depends: tool:tool
+  default-language:  Haskell2010

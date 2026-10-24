@@ -1,0 +1,37 @@
+name: Latest release
+
+on:
+  workflow_run:
+    workflows: [tests]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  release:
+    name: Latest release
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+          extra_nix_config: download-buffer-size = 1000000000
+      - uses: cachix/cachix-action@v17
+        with:
+          name: hix-build
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+      - run: rm -rf /opt/hostedtoolcache
+      - name: Build the AppImage binary
+        run: nix build .#min.appimage
+      - uses: softprops/action-gh-release@v3
+        name: Create release
+        with:
+          tag_name: latest
+          name: latest
+          prerelease: true
+          files: |
+            result/bin/hix

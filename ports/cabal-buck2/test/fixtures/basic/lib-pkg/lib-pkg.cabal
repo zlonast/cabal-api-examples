@@ -1,0 +1,15 @@
+cabal-version:      2.4
+name:                lib-pkg
+version:             0.1.0.0
+build-type:          Simple
+
+extra-source-files: include/*.h
+
+library
+  exposed-modules:   MyLib
+  hs-source-dirs:    src
+  build-depends:     base
+  -- Where the linker looks for extra-libraries (none here); relative to the
+  -- package, like include-dirs.
+  extra-lib-dirs:    libs
+  default-language:  Haskell2010

@@ -1,0 +1,45 @@
+cabal-version:      3.0
+name:               cabal-api-examples
+version:            0.1.0.0
+synopsis:           Examples consuming the cabal-install public API tier
+description:
+  Companion examples for the cabal-install API proposal. Each executable
+  mirrors the use case of a real reverse dependency of cabal-install, rebuilt
+  on top of the public tier (Distribution.Client.API.*) — with the internal
+  imports it used to need documented in its header.
+license:            BSD-3-Clause
+build-type:         Simple
+
+common shared
+    default-language: GHC2021
+    ghc-options: -Wall
+    build-depends:
+        base
+      , Cabal
+      , Cabal-syntax
+      , cabal-install
+
+executable hackage-cache-dir
+    import:            shared
+    hs-source-dirs:    exe
+    main-is:           HackageCacheDir.hs
+
+executable package-index
+    import:            shared
+    hs-source-dirs:    exe
+    main-is:           PackageIndex.hs
+
+executable project-files
+    import:            shared
+    hs-source-dirs:    exe
+    main-is:           ProjectFiles.hs
+
+executable build-targets
+    import:            shared
+    hs-source-dirs:    exe
+    main-is:           BuildTargets.hs
+
+executable programmatic-cabal
+    import:            shared
+    hs-source-dirs:    exe
+    main-is:           ProgrammaticCabal.hs

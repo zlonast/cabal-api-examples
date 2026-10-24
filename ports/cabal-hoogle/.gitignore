@@ -1,0 +1,7 @@
+dist-newstyle/
+/result
+cabal.project.local
+.vscode/
+hie.yaml
+.stack-work/
+.cabal/

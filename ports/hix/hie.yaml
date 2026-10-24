@@ -1,0 +1,10 @@
+cradle:
+  multi:
+  - path: "./"
+    config: { cradle: { none: } }
+  - path: "./packages"
+    config:
+      cradle:
+        cabal:
+          component: all
+          cabalProject: "./hls.cabal.project"

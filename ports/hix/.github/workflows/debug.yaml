@@ -1,0 +1,38 @@
+name: Debug
+
+on:
+  push:
+    branches:
+      - 'debug/*'
+
+jobs:
+  debug:
+
+    env:
+      hix_test_ci: 1
+      hix_test_verbose: 1
+      hix_test_debug: 1
+      hix_test_show_stderr: 1
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+          extra_nix_config: download-buffer-size = 1000000000
+      - uses: cachix/cachix-action@v17
+        with:
+          name: hix-build
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+      - name: Free up space
+        run: rm -rf /opt/hostedtoolcache
+      - name: Configure apparmor to permit appimages to execute
+        run: sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Run debug test
+        run: nix run .#test-debug

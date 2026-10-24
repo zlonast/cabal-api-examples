@@ -1,0 +1,9 @@
+packages: .
+
+packages:
+    /home/ilia/haskell/cabal/Cabal
+    /home/ilia/haskell/cabal/Cabal-syntax
+    /home/ilia/haskell/cabal/cabal-install-solver
+    /home/ilia/haskell/cabal/cabal-install-internal
+    /home/ilia/haskell/cabal/cabal-install
+    /home/ilia/haskell/cabal/hooks-exe

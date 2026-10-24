@@ -1,0 +1,40 @@
+cabal-version:      3.0
+name:               example
+version:            0.1.0.0
+build-type:         Simple
+synopsis:           Exercises TH, hsc2hs and C++/FFI, to test cabal-buck2 and the buck2 support code.
+
+-- The Buck2 Haskell prelude has a limitation on Template Haskell use when
+-- profiling: a splice cannot refer to other modules of the same library.
+-- Hence the separate library for Example.TH, which is used in a splice in
+-- Example.Lib.
+library th
+  exposed-modules:  Example.TH
+  build-depends:    base >=4 && <5, template-haskell
+  default-language: Haskell2010
+
+library
+  exposed-modules:
+      Example.Point
+      Example.Lib
+  build-depends:
+      base >=4 && <5
+    , example:th
+    , bytestring
+    , safe
+    , template-haskell
+  default-extensions: TemplateHaskell, ForeignFunctionInterface
+  include-dirs: cbits
+  cxx-sources: cbits/shim.cpp
+  cxx-options: -std=c++17
+  extra-libraries: stdc++
+  default-language: Haskell2010
+
+test-suite example-test
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  hs-source-dirs: test
+  build-depends:
+      base
+    , example
+  default-language: Haskell2010
