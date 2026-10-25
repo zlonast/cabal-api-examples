@@ -30,6 +30,7 @@ and building against the API branch:
 | `ports/cabal-add` | imports swapped to `API.Project` |
 | `ports/cabal-hoogle` | imports swapped to `API.Build` (`BuildOptions`, `buildTargetsAndDirs`, `BuildTarget`) |
 | `ports/hix` | **mixed mode**: facade-covered imports moved to `API.Command.{CmdSdist,CmdUpdate}` + `API.Flags`; the solver-facing surface (`IndexUtils`, `SolverInstallPlan`, `Upload`, credentials, `Setup`) deliberately stays on `cabal-install-internal ==3.1900.0` (exact bounds, Step 0 of the admission process). Also carries the fixes for the independent Cabal 3.19 breaking changes (Verbosity rework, `Text` ghc-options, `CondTree` arity, parse-error sources). |
+| `ports/guardian` | **mixed mode**: `updateAction` via `API.Command.CmdUpdate` and `defaultNixStyleFlags` via `API.Flags`; the orchestration/plan surface (`InstallPlan`, `ProjectOrchestration`, `ProjectPlanning`, `ProjectRoot`) stays on `cabal-install-internal ==3.1900.0` (exact bounds, Step 0). Vendored from the upstream GitHub tree (last change 2025-09), the sixth rdep — previously excluded as inactive. |
 | `ports/cabal-buck2` | **mixed mode**, the same recipe: `NixStyleFlags` via `API.Flags`, everything else (`SetupWrapper`, `ProjectPlanning`, `DistDirLayout`, …) on `cabal-install-internal ==3.1900.0`. The `SetupWrapper` adaptation to the type-indexed `SetupRunnerArgs` (`InLibraryLBI` → `Maybe LocalBuildInfo`) and the Cabal-3.19 `Text` fixes are included. |
 
 All of them build with `cabal build all`; `hix` additionally runs:
