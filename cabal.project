@@ -21,3 +21,9 @@ packages: ports/guardian
 -- guardian's stack adapter pulls in the whole of stack; the cabal adapter is the port
 package guardian
   flags: -stack -test-cabal-plan -test-graphmod
+
+-- guardian is unmaintained upstream: several of its dependencies carry stale
+-- upper bounds on base. The libraries themselves build fine on modern GHC.
+allow-newer: guardian:regex-applicative-text
+            , guardian:bytestring-trie
+            , guardian:language-dot
