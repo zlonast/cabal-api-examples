@@ -27,3 +27,6 @@ package guardian
 allow-newer: guardian:regex-applicative-text
             , guardian:bytestring-trie
             , guardian:language-dot
+            , regex-applicative-text:base
+            , bytestring-trie:base
+            , language-dot:base
