@@ -34,7 +34,7 @@ import Distribution.Client.ProjectOrchestration (CurrentCommand (..), ProjectBas
 import Distribution.Client.ProjectPlanning (ElaboratedConfiguredPackage (..), elabLocalToProject)
 import Distribution.Package (Package (..), packageName, unPackageName)
 import Distribution.Simple.Flag (pattern Flag)
-import Distribution.Verbosity (silent)
+import Distribution.Verbosity (defaultVerbosityHandles, mkVerbosity, silent)
 import Path
 import RIO ((.~))
 
@@ -49,7 +49,11 @@ buildPackageGraph PackageGraphOptions {customOptions = CabalOptions {..}, ..} = 
           | otherwise = []
     updateAction (defaultNixStyleFlags ()) targets mempty
 
-  ctx0 <- establishProjectBaseContextWithRoot silent mempty root OtherCommand
+  ctx0 <- establishProjectBaseContextWithRoot
+        (mkVerbosity defaultVerbosityHandles silent)
+        mempty
+        root
+        OtherCommand
   let pjCfg' =
         projectConfig ctx0
           & #projectConfigLocalPackages . #packageConfigTests
@@ -59,7 +63,7 @@ buildPackageGraph PackageGraphOptions {customOptions = CabalOptions {..}, ..} = 
       -- ProjectBaseContext has no Generic instance...
       ctx = ctx0 {projectConfig = pjCfg'}
 
-  withInstallPlan silent ctx $ \iplan _scfg -> do
+  withInstallPlan (mkVerbosity defaultVerbosityHandles silent) ctx $ \iplan _scfg -> do
     let localPkgDic =
           Map.mapMaybe
             ( \case
