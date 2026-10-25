@@ -39,8 +39,8 @@ and building against the API branch:
 | `ports/cabal-matrix` | imports swapped to `API.Config` + `API.PackageIndex` |
 | `ports/cabal-add` | imports swapped to `API.Project` |
 | `ports/cabal-hoogle` | imports swapped to `API.Build` (`BuildOptions`, `buildTargetsAndDirs`, `BuildTarget`) |
-| `ports/hix` | **mixed mode**: facade-covered imports moved to `API.Command.{CmdSdist,CmdUpdate}` + `API.Flags`; the solver-facing surface (`IndexUtils`, `SolverInstallPlan`, `Upload`, credentials, `Setup`) deliberately stays on `cabal-install-internal ==3.19.*` (exact bounds, Step 0 of the admission process). Also carries the fixes for the independent Cabal 3.19 breaking changes (Verbosity rework, `Text` ghc-options, `CondTree` arity, parse-error sources). |
-| `ports/cabal-buck2` | **mixed mode**, the same recipe: `NixStyleFlags` via `API.Flags`, everything else (`SetupWrapper`, `ProjectPlanning`, `DistDirLayout`, …) on `cabal-install-internal ==3.19.*`. The `SetupWrapper` adaptation to the type-indexed `SetupRunnerArgs` (`InLibraryLBI` → `Maybe LocalBuildInfo`) and the Cabal-3.19 `Text` fixes are included. |
+| `ports/hix` | **mixed mode**: facade-covered imports moved to `API.Command.{CmdSdist,CmdUpdate}` + `API.Flags`; the solver-facing surface (`IndexUtils`, `SolverInstallPlan`, `Upload`, credentials, `Setup`) deliberately stays on `cabal-install-internal ==3.1900.0` (exact bounds, Step 0 of the admission process). Also carries the fixes for the independent Cabal 3.19 breaking changes (Verbosity rework, `Text` ghc-options, `CondTree` arity, parse-error sources). |
+| `ports/cabal-buck2` | **mixed mode**, the same recipe: `NixStyleFlags` via `API.Flags`, everything else (`SetupWrapper`, `ProjectPlanning`, `DistDirLayout`, …) on `cabal-install-internal ==3.1900.0`. The `SetupWrapper` adaptation to the type-indexed `SetupRunnerArgs` (`InLibraryLBI` → `Maybe LocalBuildInfo`) and the Cabal-3.19 `Text` fixes are included. |
 
 All of them build with `cabal build all`; `hix` additionally runs:
 `cabal run hix -- --help`, and `cabal-buck2` provides the `cabal buck2`

@@ -390,7 +390,7 @@ library
     , bytestring >=0.12.1.0 && <0.13
     , cabal-install >=3.19 && <3.20
     , cabal-install-solver >=3.19 && <3.20
-    , cabal-install-internal ==3.19.*
+    , cabal-install-internal ==3.1900.0
     , casing >=0.1.0.0 && <0.2
     , containers >=0.6.8 && <0.8
     , exceptions >=0.10.7 && <0.11
