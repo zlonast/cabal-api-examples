@@ -1,4 +1,3 @@
-packages: .
 
 -- The API branch checkout, as a sibling directory:
 --   git clone --branch zlonast/cabal-install-api https://github.com/haskell/cabal cabal
