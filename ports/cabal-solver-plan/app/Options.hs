@@ -11,6 +11,7 @@ module Options (
 where
 
 import Colog.Core (Severity (..))
+import Data.Bool (bool)
 import Data.List (intercalate)
 import Data.List.NonEmpty qualified as NE
 import Data.Map (Map)
@@ -44,7 +45,7 @@ import Distribution.Solver.Types.Settings (
     IndependentGoals (..),
     MinimizeConflictSet (..),
     OnlyConstrained (..),
-    PreferOldest (..),
+    PreferVersion (..),
     ReorderGoals (..),
     ShadowPkgs (..),
     SolveExecutables (..),
@@ -96,7 +97,7 @@ data Options = Options
     , preferences :: [PackageVersionConstraint]
     , flagAssignments :: Map PackageName FlagAssignment
     , solverConfig :: SolverConfig
-    , preferOldest :: PreferOldest
+    , preferOldest :: PreferVersion
     , cacheDir :: Maybe FilePath
     , offline :: Bool
     , jsonOutput :: Bool
@@ -257,7 +258,7 @@ opts = info (s <**> helper <**> simpleVersioner ("cabal-solver-plan " ++ showVer
             <*> pure [] -- TODO: solverSettingPreferences
             <*> solver flagAssignmentParser
             <*> solver solverConfigParser
-            <*> solver (PreferOldest <$> switchPair "prefer-oldest" False "Prefer the oldest versions of packages rather than the latest, e.g. to test lower bounds.")
+            <*> solver (bool PreferLatest PreferOldest <$> switchPair "prefer-oldest" False "Prefer the oldest versions of packages rather than the latest, e.g. to test lower bounds.")
             <*> packages
                 ( optional
                     ( strOption

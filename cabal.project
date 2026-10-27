@@ -1,4 +1,3 @@
-
 -- The API branch checkout, as a sibling directory:
 --   git clone --branch zlonast/cabal-install-api https://github.com/haskell/cabal cabal
 packages: ../cabal/Cabal
@@ -8,32 +7,8 @@ packages: ../cabal/hooks-exe
 packages: ../cabal/cabal-install-internal
 packages: ../cabal/cabal-install
 
--- The real reverse dependencies, vendored with their migration patches applied
--- (see README): hackage-revdeps, cabal-matrix, cabal-add, cabal-hoogle.
-packages: ports/hackage-revdeps
-packages: ports/cabal-matrix
-packages: ports/cabal-add
-packages: ports/cabal-hoogle
+-- Only hix lives in the common build. Every other port builds separately,
+-- through its own cabal.project (`cd ports/<port> && cabal build all`), so
+-- that one port's stale dependencies (e.g. hnix's bounds in make-install-plan)
+-- cannot spill into the shared install plan.
 packages: ports/hix/packages/hix
-packages: ports/cabal-buck2
-packages: ports/guardian
-
--- The plan producers (review feedback): both use Cabal to produce plans for
--- other build systems, so their needs are engine-resident by nature — no
--- API.* module covers them. They migrate in Step-0 mode only: cabal-install
--- swapped for the exactly-pinned cabal-install-internal, imports untouched.
-packages: ports/cabal-solver-plan
-packages: ports/make-install-plan
-
--- guardian's stack adapter pulls in the whole of stack; the cabal adapter is the port
-package guardian
-  flags: -stack -test-cabal-plan -test-graphmod
-
--- guardian is unmaintained upstream: several of its dependencies carry stale
--- upper bounds on base. The libraries themselves build fine on modern GHC.
-allow-newer: guardian:regex-applicative-text
-            , guardian:bytestring-trie
-            , guardian:language-dot
-            , regex-applicative-text:base
-            , bytestring-trie:base
-            , language-dot:base

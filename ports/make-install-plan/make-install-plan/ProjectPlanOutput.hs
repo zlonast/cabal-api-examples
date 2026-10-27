@@ -305,7 +305,7 @@ encodePlanAsJson distDirLayout elaboratedInstallPlan elaboratedSharedConfig targ
       buildSettingOnlyDownload = False,
       buildSettingSummaryFile = mempty,
       buildSettingLogFile = Nothing,
-      buildSettingLogVerbosity = Verbosity.normal,
+      buildSettingLogVerbosity = Verbosity.mkVerbosity Verbosity.defaultVerbosityHandles Verbosity.normal,
       buildSettingBuildReports = NoReports,
       buildSettingSymlinkBinDir = [],
       buildSettingNumJobs = ParStrat.Serial,
@@ -333,7 +333,7 @@ encodePlanAsJson distDirLayout elaboratedInstallPlan elaboratedSharedConfig targ
     -- with an old lib:Cabal version.
     buildInfoFileLocation :: J.Pair
     buildInfoFileLocation
-      | elabSetupScriptCliVersion elab < mkVersion [3, 7, 0, 0] =
+      | setupCliVersion (elabSetupScriptCliVersion elab) < mkVersion [3, 7, 0, 0] =
           "build-info" J..= J.Null
       | otherwise =
           "build-info" J..= J.String (getSymbolicPath (buildInfoPref (makeSymbolicPath dist_dir)))

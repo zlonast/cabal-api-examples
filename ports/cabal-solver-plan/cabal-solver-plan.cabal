@@ -33,7 +33,7 @@ executable cabal-solver-plan
                     , Paths_cabal_solver_plan
     autogen-modules:  Paths_cabal_solver_plan
     build-depends:    base ^>= 4.21.0.0 || ^>= 4.22.0.0
-                    , aeson ^>= 2.3.2.0
+                    , aeson >= 2.2.3.0 && < 2.4
                     , aeson-pretty ^>= 0.8.10
                     , binary ^>= 0.8.9.3
                     , bytestring ^>= 0.12.2.0

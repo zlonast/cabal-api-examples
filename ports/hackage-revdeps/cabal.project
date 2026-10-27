@@ -1,9 +1,10 @@
-packages: .
+-- The API branch checkout, three levels up:
+--   git clone --branch zlonast/cabal-install-api https://github.com/haskell/cabal cabal
+packages: ../../../cabal/Cabal
+          ../../../cabal/Cabal-syntax
+          ../../../cabal/cabal-install-solver
+          ../../../cabal/hooks-exe
+          ../../../cabal/cabal-install-internal
+          ../../../cabal/cabal-install
 
-packages:
-    /home/ilia/haskell/cabal/Cabal
-    /home/ilia/haskell/cabal/Cabal-syntax
-    /home/ilia/haskell/cabal/cabal-install-solver
-    /home/ilia/haskell/cabal/cabal-install-internal
-    /home/ilia/haskell/cabal/cabal-install
-    /home/ilia/haskell/cabal/hooks-exe
+packages: .

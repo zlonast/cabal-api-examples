@@ -1,9 +1,30 @@
+-- The API branch checkout, three levels up:
+--   git clone --branch zlonast/cabal-install-api https://github.com/haskell/cabal cabal
+packages: ../../../cabal/Cabal
+          ../../../cabal/Cabal-syntax
+          ../../../cabal/cabal-install-solver
+          ../../../cabal/hooks-exe
+          ../../../cabal/cabal-install-internal
+          ../../../cabal/cabal-install
+
 packages: .
 static: True
 executable-static: True
 executable-dynamic: False
 
-allow-newer: validation-selective:selective
+-- guardian's stack adapter pulls in the whole of stack; the cabal adapter is the port
+package guardian
+  flags: -stack -test-cabal-plan -test-graphmod
+
+-- guardian is unmaintained upstream: several of its dependencies carry stale
+-- upper bounds on base. The libraries themselves build fine on modern GHC.
+allow-newer: guardian:regex-applicative-text
+            , guardian:bytestring-trie
+            , guardian:language-dot
+            , regex-applicative-text:base
+            , bytestring-trie:base
+            , language-dot:base
+            , validation-selective:selective
 
 package cryptonite
   flags: -integer-gmp

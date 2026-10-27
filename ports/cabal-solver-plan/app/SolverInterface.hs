@@ -22,7 +22,6 @@ import Distribution.Client.Utils (incVersion)
 import Distribution.PackageDescription qualified as PD
 import Distribution.Pretty (prettyShow)
 import Distribution.Simple as Cabal
-import Distribution.Simple.Flag qualified as Flag
 import Distribution.Simple.PackageIndex (InstalledPackageIndex)
 import Distribution.Simple.Utils (cabalVersion)
 import Distribution.Solver.Modular (SolverConfig (..), modularResolver)
@@ -48,7 +47,7 @@ import Distribution.Solver.Types.PackagePath (QPN)
 import Distribution.Solver.Types.PackagePreferences (PackagePreferences (..))
 import Distribution.Solver.Types.PkgConfigDb (PkgConfigDb)
 import Distribution.Solver.Types.Progress (Progress (..), foldProgress)
-import Distribution.Solver.Types.Settings (PreferOldest)
+import Distribution.Solver.Types.Settings (PreferVersion (PreferOldest, PreferLatest))
 import Distribution.Solver.Types.SourcePackage (SourcePackage)
 import Distribution.Solver.Types.SummarizedMessage (SummarizedMessage)
 import Distribution.System (Arch, OS, Platform (..))
@@ -64,7 +63,7 @@ solve ::
     [PackageVersionConstraint] ->
     Map PackageName PD.FlagAssignment ->
     SolverConfig ->
-    PreferOldest ->
+    PreferVersion ->
     InstalledPackageIndex ->
     PackageIndex (SourcePackage loc) ->
     Map PackageName VersionRange ->
@@ -124,7 +123,7 @@ solve
             -- installed for global packages, or prefer latest even for
             -- global packages. Perhaps should be configurable but with a
             -- different name than "upgrade-dependencies".
-            if Flag.asBool solverSettingPreferOldest
+            if solverSettingPreferOldest == PreferOldest
                 then PreferAllOldest
                 else PreferLatestForSelected
 

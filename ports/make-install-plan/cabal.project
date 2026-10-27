@@ -1,0 +1,28 @@
+-- The API branch checkout, three levels up:
+--   git clone --branch zlonast/cabal-install-api https://github.com/haskell/cabal cabal
+packages: ../../../cabal/Cabal
+          ../../../cabal/Cabal-syntax
+          ../../../cabal/cabal-install-solver
+          ../../../cabal/hooks-exe
+          ../../../cabal/cabal-install-internal
+          ../../../cabal/cabal-install
+
+packages: .
+
+-- The only released hnix (0.17.0, 2023) predates GHC 9.12. Its dependency
+-- tree pins 2023-era versions, which solve natively in this isolated project;
+-- only the boot packages shipped with GHC (filepath, deepseq, ...) have no
+-- older alternative, so exactly those stale upper bounds are relaxed. The
+-- pin keeps the tested hnix combination.
+constraints: hnix ==0.17.0
+allow-newer: hnix:filepath
+            , hnix:hashable
+            , hashable:base
+            , free:template-haskell
+            , free:semigroupoids
+            , free:th-abstraction
+            , extra:base
+            , hnix:extra
+            , hnix:aeson
+            , algebraic-graphs:deepseq
+            , hnix:template-haskell
