@@ -18,6 +18,13 @@ packages: ports/hix/packages/hix
 packages: ports/cabal-buck2
 packages: ports/guardian
 
+-- The plan producers (review feedback): both use Cabal to produce plans for
+-- other build systems, so their needs are engine-resident by nature — no
+-- API.* module covers them. They migrate in Step-0 mode only: cabal-install
+-- swapped for the exactly-pinned cabal-install-internal, imports untouched.
+packages: ports/cabal-solver-plan
+packages: ports/make-install-plan
+
 -- guardian's stack adapter pulls in the whole of stack; the cabal adapter is the port
 package guardian
   flags: -stack -test-cabal-plan -test-graphmod

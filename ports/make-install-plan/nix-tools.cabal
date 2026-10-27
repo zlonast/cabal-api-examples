@@ -1,0 +1,77 @@
+cabal-version:       3.8
+name:                nix-tools
+version:             0.1.0.0
+synopsis:            haskell.nix's make-install-plan, extracted from nix-tools
+description:
+  The @make-install-plan@ executable of
+  <https://github.com/ican-group/haskell.nix haskell.nix>'s @nix-tools@
+  package, vendored verbatim together with the @cabal2nix@ library component
+  it depends on (the rest of @nix-tools@ is not needed to build it).
+  It reuses cabal-install's own planning pipeline (@rebuildInstallPlan@) and
+  serialises the elaborated plan for Nix conversion — a Step-0 consumer:
+  the planning surface is engine-resident, so the only migration change is
+  the dependency: @cabal-install@ replaced by the exactly-pinned
+  @cabal-install-internal@.
+license:             BSD-3-Clause
+license-file:        LICENSE
+author:              Moritz Angermann, Andrea Bedini
+maintainer:          nix-dev@lists.downloads.haskell.org
+homepage:            https://github.com/ican-group/haskell.nix
+bug-reports:         https://github.com/ican-group/haskell.nix/issues
+category:            Distribution
+build-type:          Simple
+
+source-repository head
+  type:              git
+  location:          https://github.com/ican-group/haskell.nix
+  subdir:            nix-tools/nix-tools
+
+common warnings
+  ghc-options:         -Wall
+
+common cabal-deps
+  build-depends:
+    Cabal >=3.19 && <3.20,
+    Cabal-syntax >=3.19 && <3.20
+
+common cabal-install-deps
+  import: cabal-deps
+  build-depends:
+    cabal-install-internal ==3.1900.0,
+    cabal-install-solver >=3.19 && <3.20
+
+library cabal2nix
+  import:              warnings
+                     , cabal-deps
+  build-depends:     , base
+                     , base16-bytestring
+                     , bytestring
+                     , cryptohash-sha256
+                     , data-fix
+                     , directory
+                     , filepath
+                     , hnix
+                     , network-uri
+                     , text
+  exposed-modules:     Cabal2Nix
+                       Cabal2Nix.Util
+  hs-source-dirs:      lib-cabal2nix
+  default-language:    Haskell2010
+
+executable make-install-plan
+  import:              warnings
+                     , cabal-install-deps
+  build-depends:       base
+                     , bytestring
+                     , containers
+                     , directory
+                     , filepath
+                     , hnix
+                     , nix-tools:cabal2nix
+                     , prettyprinter
+                     , text
+  main-is:             MakeInstallPlan.hs
+  other-modules:       Freeze
+                       ProjectPlanOutput
+  hs-source-dirs:      make-install-plan
+  default-language:    Haskell2010
